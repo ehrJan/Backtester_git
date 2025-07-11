@@ -12,3 +12,4 @@ class MeanReversionStrategy(Strategy):
         deviation = (data[self.asset_name] - ma) / ma
         signals = (deviation < -self.threshold).astype(int)
         return signals
+

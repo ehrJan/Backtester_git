@@ -9,7 +9,6 @@ class Backtester:
         self.initial_cash = initial_cash
         self.results = None
         self.asset_name = data.columns[0] if isinstance(data, pd.DataFrame) and not data.empty else None
-        
         self.clean_data()
 
     def clean_data(self):
@@ -33,9 +32,13 @@ class Backtester:
             for k, v in metrics.items():
                 print(f"{k}: {v}")
 
-    def plot(self):
+    def plot(self,params=None):
         (1 + self.results[["Returns", "Strategy"]]).cumprod().plot(figsize=(12, 6))
-        plt.title("Buy & Hold vs Strategy Performance")
+
+        if self.results is None:
+            plt.title(f"Buy & Hold vs Strategy Performance for {self.asset_name}")
+        else:
+            plt.title(f"Buy & Hold vs Strategy Performance for {self.asset_name} and {params}")
         plt.grid()
         plt.show()
 
