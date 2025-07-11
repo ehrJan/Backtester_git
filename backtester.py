@@ -107,6 +107,23 @@ class Backtester:
 
         # --- Trade-by-trade returns ---
         trade_df = self.extract_trades(plot_pdf=False)
+        if trade_df.empty:
+            return {
+                "total_net_return": net_return,
+                "annualized_return": annualized_return,
+                "sharpe": sharpe,
+                "max_drawdown": max_drawdown,
+                "avg_trade_return": np.nan,
+                "median_trade_return": np.nan,
+                "avg_trade_return_long": np.nan,
+                "median_trade_return_long": np.nan,
+                "avg_trade_return_short": np.nan,
+                "median_trade_return_short": np.nan,
+                "skewness": np.nan,
+                "num_trades": num_trades,
+                "total_fees_paid": total_fees,
+                "fees_as_pct_of_gross": fee_share * 100 if pd.notnull(fee_share) else np.nan
+            }
         long_trades = trade_df[trade_df["direction"] == "Long"]
         short_trades = trade_df[trade_df["direction"] == "Short"]
 
