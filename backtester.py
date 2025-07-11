@@ -3,12 +3,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class Backtester:
-    def __init__(self,asset_name, data_path, strategy, initial_cash=10000):
-        self.data = pd.read_csv(data_path, parse_dates=["DATES"], index_col="DATES")
+    def __init__(self, data:pd.DataFrame, strategy, initial_cash=10000):
+        self.data = data
         self.strategy = strategy
         self.initial_cash = initial_cash
         self.results = None
-        self.asset_name = asset_name
+        self.asset_name = data.columns[0] if isinstance(data, pd.DataFrame) and not data.empty else None
         
         self.clean_data()
 
@@ -27,17 +27,25 @@ class Backtester:
         self.data.dropna(inplace=True)
         self.results = self.data.copy()
 
-    def evaluate(self):
-        total_return = (1 + self.results["Strategy"]).prod() - 1
-        annualized_return = (1 + total_return)**(252/len(self.results)) - 1
-        sharpe = self.results["Strategy"].mean() / self.results["Strategy"].std() * (252**0.5)
-
-        print(f"Total return: {total_return:.2%}")
-        print(f"Annualized return: {annualized_return:.2%}")
-        print(f"Sharpe Ratio: {sharpe:.2f}")
+    def evaluate(self, silent=False):
+        metrics = self.get_performance_metrics()
+        if not silent:
+            for k, v in metrics.items():
+                print(f"{k}: {v}")
 
     def plot(self):
         (1 + self.results[["Returns", "Strategy"]]).cumprod().plot(figsize=(12, 6))
         plt.title("Buy & Hold vs Strategy Performance")
         plt.grid()
         plt.show()
+
+    def get_performance_metrics(self):
+        total_return = (1 + self.results["Strategy"]).prod() - 1
+        sharpe = self.results["Strategy"].mean() / self.results["Strategy"].std() * (252**0.5)
+        annualized_return = (1 + total_return) ** (252 / len(self.results)) - 1
+
+        return {
+            "total_return": round(total_return, 4),
+            "annualized_return": round(annualized_return, 4),
+            "sharpe": round(sharpe, 2)
+        }
