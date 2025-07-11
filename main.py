@@ -1,5 +1,5 @@
 from backtester import Backtester
-from strategies.trend_following import TrendFollowingStrategy
+from strategies.simple_moving_average_long import TrendFollowingStrategy
 from strategies.mean_reversion import MeanReversionStrategy
 
 if __name__ == "__main__":
