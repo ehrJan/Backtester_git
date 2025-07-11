@@ -40,7 +40,6 @@ class Backtester:
 
         self.data["TradeDirection"] = self.data["TradeChange"].apply(trade_direction)
 
-        # Apply fees
         self.data["Fee"] = self.data["TradeChange"].abs() * self.trading_fee_percent
         self.data["Strategy"] -= self.data["Fee"]
 
@@ -57,7 +56,7 @@ class Backtester:
         fig, ax = plt.subplots(figsize=(14, 6))
 
         # Equity curves
-        (1 + self.results[["Returns", "Strategy"]]).cumprod().plot(ax=ax, lw=1.5)
+        np.exp(self.results[["Returns", "Strategy"]].cumsum()).plot(ax=ax, lw=1.5)
 
         # Plot entry/exit points
         trades = self.results[self.results["TradeDirection"] != 0]
@@ -76,15 +75,18 @@ class Backtester:
         plt.show()
 
     def get_performance_metrics(self):
-        gross_return = (1 + self.results["Strategy"] + self.results["Fee"]).prod() - 1
-        net_return = (1 + self.results["Strategy"]).prod() - 1
+        gross_log_return = self.results["Strategy"].sum() + self.results["Fee"].sum()
+        net_log_return = self.results["Strategy"].sum()
+
+        gross_return = np.exp(gross_log_return) - 1
+        net_return = np.exp(net_log_return) - 1
 
         sharpe = self.results["Strategy"].mean() / self.results["Strategy"].std() * np.sqrt(252)
-        annualized_return = (1 + net_return) ** (252 / len(self.results)) - 1
+        annualized_return = np.exp(net_log_return * (252 / len(self.results))) - 1
 
         total_fees = self.results["Fee"].sum()
         num_trades = int(self.results["TradeDirection"].abs().sum())
-        fee_share = total_fees / gross_return if gross_return != 0 else np.nan
+        fee_share = total_fees / gross_log_return if gross_log_return != 0 else np.nan
 
         return {
             "total_return": round(net_return, 4),
@@ -94,3 +96,4 @@ class Backtester:
             "total_fees_paid": round(total_fees, 4),
             "fees_as_pct_of_gross": round(fee_share * 100, 2) if pd.notnull(fee_share) else "N/A"
         }
+
