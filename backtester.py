@@ -77,6 +77,7 @@ class Backtester:
         ax.fill_between(drawdown.index, equity_curve, peak, where=drawdown < 0, color='red', alpha=0.2, label='Drawdown')
 
         ax.set_title(f"Strategy vs Buy & Hold: {self.asset_name} {params}")
+        ax.set_yscale("log")
         ax.grid()
         ax.legend()
         plt.show()
