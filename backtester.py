@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-
+import seaborn as sns
 class Backtester:
     def __init__(self, data:pd.DataFrame, strategy, initial_cash=10000,trading_fee_percent=0.0004):
         self.data = data
@@ -106,29 +106,25 @@ class Backtester:
         max_drawdown = drawdown.min()
 
         # --- Trade-by-trade returns ---
-        trades = self.results[self.results["TradeDirection"] != 0].copy()
-        trades["PnL"] = self.results["Strategy"]
+        trade_df = self.extract_trades(plot_pdf=False)
+        long_trades = trade_df[trade_df["direction"] == "Long"]
+        short_trades = trade_df[trade_df["direction"] == "Short"]
 
-        long_mask = self.results["Signal"].shift(1) > 0
-        short_mask = self.results["Signal"].shift(1) < 0
+        avg_win = trade_df["net_return_pct"].mean() / 100
+        median_win = trade_df["net_return_pct"].median() / 100
 
-        long_trades = self.results[long_mask & self.results["TradeDirection"] != 0]
-        short_trades = self.results[short_mask & self.results["TradeDirection"] != 0]
+        avg_win_long = long_trades["net_return_pct"].mean() / 100 if not long_trades.empty else np.nan
+        median_win_long = long_trades["net_return_pct"].median() / 100 if not long_trades.empty else np.nan
 
-        avg_win = trades["PnL"].mean()
-        median_win = trades["PnL"].median()
+        avg_win_short = short_trades["net_return_pct"].mean() / 100 if not short_trades.empty else np.nan
+        median_win_short = short_trades["net_return_pct"].median() / 100 if not short_trades.empty else np.nan
 
-        avg_win_long = long_trades["Strategy"].mean() if not long_trades.empty else np.nan
-        median_win_long = long_trades["Strategy"].median() if not long_trades.empty else np.nan
-
-        avg_win_short = short_trades["Strategy"].mean() if not short_trades.empty else np.nan
-        median_win_short = short_trades["Strategy"].median() if not short_trades.empty else np.nan
-
+        num_trades = len(trade_df)
         # --- Skewness ---
         skew = self.results["Strategy"].skew()
 
         return {
-            "total_return": round(net_return, 4),
+            "total_net_return": round(net_return, 4),
             "annualized_return": round(annualized_return, 4),
             "sharpe": round(sharpe, 2),
             "max_drawdown": round(max_drawdown, 4),
@@ -185,4 +181,66 @@ class Backtester:
                         "depth_pct": round(max_dd * 100, 2),
                         "recovery_days": recovery_time
                     })
+
+    def extract_trades(self, plot_pdf=True):
+        """
+        Extracts all trades and optionally plots a cumulative distribution (CDF) of returns per trade.
+        Returns a DataFrame with trade stats.
+        """
+        trades = []
+        in_trade = False
+        entry_idx = None
+        entry_signal = 0
+
+        for i in range(1, len(self.results)):
+            current_signal = self.results["Signal"].iloc[i]
+            previous_signal = self.results["Signal"].iloc[i - 1]
+
+            if not in_trade and current_signal != 0 and previous_signal == 0:
+                in_trade = True
+                entry_idx = i
+                entry_signal = current_signal
+
+            elif in_trade and (current_signal == 0 or np.sign(current_signal) != np.sign(entry_signal)):
+                exit_idx = i
+                trade_data = self.results.iloc[entry_idx:exit_idx]
+
+                trade_return_log = trade_data["Strategy"].sum()
+                trade_fees = trade_data["Fee"].sum()
+                trade_return = np.exp(trade_return_log) - 1
+
+                trades.append({
+                    "start": trade_data.index[0],
+                    "end": trade_data.index[-1],
+                    "direction": "Long" if entry_signal > 0 else "Short",
+                    "log_return": trade_return_log,
+                    "net_return_pct": trade_return * 100,
+                    "length": len(trade_data),
+                    "total_fees": trade_fees
+                })
+
+                in_trade = current_signal != 0
+                if in_trade:
+                    entry_idx = i
+                    entry_signal = current_signal
+
+        trade_df = pd.DataFrame(trades)
+
+        # Plot CDF if requested and trades exist
+        if plot_pdf and not trade_df.empty:
+            fig, ax = plt.subplots(figsize=(10, 5))
+            sns.histplot(trade_df["net_return_pct"], bins=30, kde=True, ax=ax, color='skyblue')
+            ax.axvline(0, color='red', linestyle="--", label="Break-even")
+            ax.axvline(trade_df["net_return_pct"].mean(), color='green', linestyle="--", label=f"Mean: {trade_df['net_return_pct'].mean():.2f}%")
+            ax.set_title("Distribution of Trade Returns (PDF)")
+            ax.set_xlabel("Trade Return (%)")
+            ax.set_ylabel("Frequency")
+            ax.grid(True)
+            ax.legend()
+            plt.tight_layout()
+            plt.show()
+
+
+        return trade_df
+
 
