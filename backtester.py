@@ -25,7 +25,7 @@ class Backtester:
         self.data["Signal"] = self.strategy.generate_signals(self.data)
         self.data["Returns"] = np.log(self.data[self.asset_name] / self.data[self.asset_name].shift(1))
 
-        self.data["Strategy"] = self.data["Signal"].shift(1) * self.data["Returns"]
+        self.data["Strategy"] = self.data["Signal"].shift(1) * self.data["Returns"]#no look ahead bias
         self.data.dropna(inplace=True)
         self.results = self.data.copy()
 
@@ -55,26 +55,37 @@ class Backtester:
     def plot(self, params=None):
         fig, ax = plt.subplots(figsize=(14, 6))
 
-        # Equity curves
-        np.exp(self.results[["Returns", "Strategy"]].cumsum()).plot(ax=ax, lw=1.5)
+        # --- Equity curve (strategy & buy-and-hold) ---
+        equity_curves = np.exp(self.results[["Returns", "Strategy"]].cumsum())
+        equity_curves.plot(ax=ax, lw=1.5)
 
-        # Plot entry/exit points
+        # --- Mark Trades ---
         trades = self.results[self.results["TradeDirection"] != 0]
-
         for idx, row in trades.iterrows():
-            if row["TradeDirection"] == 1:  # open long
-                ax.plot(idx, (1 + self.results.loc[idx, "Strategy"]).cumprod(), marker="^", color="green", markersize=8, label="Open Long" if 'Open Long' not in ax.get_legend_handles_labels()[1] else "")
-            elif row["TradeDirection"] == -1:  # close long or open short
-                ax.plot(idx, (1 + self.results.loc[idx, "Strategy"]).cumprod(), marker="v", color="red", markersize=8, label="Open Short" if 'Open Short' not in ax.get_legend_handles_labels()[1] else "")
+            y = np.exp(self.results.loc[:idx, "Strategy"].cumsum())[-1]
+            if row["TradeDirection"] == 1:
+                ax.plot(idx, y, marker="^", color="green", markersize=8, label="Open Long" if 'Open Long' not in ax.get_legend_handles_labels()[1] else "")
+            elif row["TradeDirection"] == -1:
+                ax.plot(idx, y, marker="v", color="red", markersize=8, label="Open Short" if 'Open Short' not in ax.get_legend_handles_labels()[1] else "")
             elif row["TradeDirection"] in [-2, 2]:
-                ax.plot(idx, (1 + self.results.loc[idx, "Strategy"]).cumprod(), marker="x", color="black", markersize=8, label="Position Flip" if 'Position Flip' not in ax.get_legend_handles_labels()[1] else "")
-        
+                ax.plot(idx, y, marker="x", color="black", markersize=8, label="Flip" if 'Flip' not in ax.get_legend_handles_labels()[1] else "")
+
+        # --- Max drawdown area ---
+        equity_curve = np.exp(self.results["Strategy"].cumsum())
+        peak = equity_curve.cummax()
+        drawdown = (equity_curve - peak) / peak
+        ax.fill_between(drawdown.index, equity_curve, peak, where=drawdown < 0, color='red', alpha=0.2, label='Drawdown')
+
         ax.set_title(f"Strategy vs Buy & Hold: {self.asset_name} {params}")
         ax.grid()
         ax.legend()
         plt.show()
 
+    
+    #PERFORMANCE METRICS of the strategy
+
     def get_performance_metrics(self):
+        # --- Log Returns and Total Returns ---
         gross_log_return = self.results["Strategy"].sum() + self.results["Fee"].sum()
         net_log_return = self.results["Strategy"].sum()
 
@@ -88,12 +99,90 @@ class Backtester:
         num_trades = int(self.results["TradeDirection"].abs().sum())
         fee_share = total_fees / gross_log_return if gross_log_return != 0 else np.nan
 
+        # --- Max Drawdown ---
+        equity_curve = np.exp(self.results["Strategy"].cumsum())
+        peak = equity_curve.cummax()
+        drawdown = (equity_curve - peak) / peak
+        max_drawdown = drawdown.min()
+
+        # --- Trade-by-trade returns ---
+        trades = self.results[self.results["TradeDirection"] != 0].copy()
+        trades["PnL"] = self.results["Strategy"]
+
+        long_mask = self.results["Signal"].shift(1) > 0
+        short_mask = self.results["Signal"].shift(1) < 0
+
+        long_trades = self.results[long_mask & self.results["TradeDirection"] != 0]
+        short_trades = self.results[short_mask & self.results["TradeDirection"] != 0]
+
+        avg_win = trades["PnL"].mean()
+        median_win = trades["PnL"].median()
+
+        avg_win_long = long_trades["Strategy"].mean() if not long_trades.empty else np.nan
+        median_win_long = long_trades["Strategy"].median() if not long_trades.empty else np.nan
+
+        avg_win_short = short_trades["Strategy"].mean() if not short_trades.empty else np.nan
+        median_win_short = short_trades["Strategy"].median() if not short_trades.empty else np.nan
+
+        # --- Skewness ---
+        skew = self.results["Strategy"].skew()
+
         return {
             "total_return": round(net_return, 4),
             "annualized_return": round(annualized_return, 4),
             "sharpe": round(sharpe, 2),
+            "max_drawdown": round(max_drawdown, 4),
+            "avg_trade_return": round(avg_win, 5),
+            "median_trade_return": round(median_win, 5),
+            "avg_trade_return_long": round(avg_win_long, 5) if pd.notna(avg_win_long) else "N/A",
+            "median_trade_return_long": round(median_win_long, 5) if pd.notna(avg_win_long) else "N/A",
+            "avg_trade_return_short": round(avg_win_short, 5) if pd.notna(avg_win_short) else "N/A",
+            "median_trade_return_short": round(median_win_short, 5)if pd.notna(avg_win_long) else "N/A",
+            "skewness": round(skew, 3),
             "num_trades": num_trades,
             "total_fees_paid": round(total_fees, 4),
             "fees_as_pct_of_gross": round(fee_share * 100, 2) if pd.notnull(fee_share) else "N/A"
         }
+
+    def get_drawdown_table(self):
+        """
+        Identifies all local drawdowns and returns them as a DataFrame with:
+        - start date
+        - end date
+        - drawdown depth
+        - drawdown length
+        - recovery time
+        """
+        equity_curve = np.exp(self.results["Strategy"].cumsum())
+        peak = equity_curve.cummax()
+        drawdown = (equity_curve - peak) / peak
+
+        in_drawdown = False
+        start = None
+        trough = None
+        max_dd = 0
+        drawdowns = []
+
+        for i in range(len(drawdown)):
+            if not in_drawdown and drawdown.iloc[i] < 0:
+                in_drawdown = True
+                start = drawdown.index[i - 1] if i > 0 else drawdown.index[i]
+                trough = drawdown.index[i]
+                max_dd = drawdown.iloc[i]
+            elif in_drawdown:
+                if drawdown.iloc[i] < max_dd:
+                    max_dd = drawdown.iloc[i]
+                    trough = drawdown.index[i]
+                if drawdown.iloc[i] == 0:
+                    end = drawdown.index[i]
+                    duration = (end - start).days
+                    recovery_time = (end - trough).days
+                    drawdowns.append({
+                        "start": start,
+                        "trough": trough,
+                        "end": end,
+                        "length_days": duration,
+                        "depth_pct": round(max_dd * 100, 2),
+                        "recovery_days": recovery_time
+                    })
 
