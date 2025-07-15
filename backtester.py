@@ -199,6 +199,7 @@ class Backtester:
                         "depth_pct": round(max_dd * 100, 2),
                         "recovery_days": recovery_time
                     })
+        return pd.DataFrame(drawdowns)
 
     def extract_trades(self, plot_pdf=True):
         """
@@ -260,5 +261,37 @@ class Backtester:
 
 
         return trade_df
+    
+    def plot_rolling_metrics(self, window=30):
+        returns = self.results["Strategy"]
+        rolling_sharpe = returns.rolling(window).mean() / returns.rolling(window).std() * np.sqrt(252)
+        rolling_vol = returns.rolling(window).std() * np.sqrt(252)
+        
+        fig, ax = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+        ax[0].plot(rolling_sharpe, label=f"{window}D Rolling Sharpe", color="blue")
+        ax[0].axhline(0, color="black", linestyle="--", lw=0.5)
+        ax[0].set_title("Rolling Sharpe Ratio")
+        ax[0].legend()
+
+        ax[1].plot(rolling_vol, label=f"{window}D Rolling Volatility", color="orange")
+        ax[1].set_title("Rolling Volatility (Annualized)")
+        ax[1].legend()
+
+        plt.tight_layout()
+        plt.show()
+
+    def generate_report(self):
+        print(f"\n📊 Performance Report for {self.asset_name}")
+        print("=" * 40)
+        self.evaluate()
+        self.plot()
+        self.plot_rolling_metrics()
+        drawdowns = self.get_drawdown_table()
+        print("\nWorst Drawdowns:")
+        print(drawdowns.sort_values("depth_pct").head(5))
+        self.extract_trades(plot_pdf=True)
+
+
 
 
