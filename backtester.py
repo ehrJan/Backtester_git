@@ -2,6 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from datetime import timedelta
+
 class Backtester:
     def __init__(self, data:pd.DataFrame, strategy, initial_cash=10000,trading_fee_percent=0.0004):
         self.data = data
@@ -20,6 +22,8 @@ class Backtester:
             self.data = self.data.dropna()
 
         self.data.sort_index(inplace=True)
+    
+    
 
     def run(self):
         self.data["Signal"] = self.strategy.generate_signals(self.data)
@@ -292,6 +296,8 @@ class Backtester:
         print(drawdowns.sort_values("depth_pct").head(5))
         self.extract_trades(plot_pdf=True)
 
+    
+    
 
 
 
