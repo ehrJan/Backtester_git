@@ -1,0 +1,187 @@
+Absolutely, I can provide a `README.md` for your Python backtesting class. This will describe the functionality and usage of your `Backtester` class.
+
+````markdown
+# Quantitative Trading Strategy Backtester
+
+This Python class, `Backtester`, provides a robust framework for evaluating the performance of quantitative trading strategies. It integrates essential functionalities such as signal processing, performance metric calculation, and visual analysis of strategy results against a buy-and-hold benchmark.
+
+## Features
+
+- **Strategy Agnostic:** Designed to work with any custom trading strategy that implements a `generate_signals` method.
+- **Comprehensive Performance Metrics:** Calculates key metrics including total returns, annualized returns, Sharpe ratio, maximum drawdown, and trade-by-trade statistics.
+- **Visualizations:** Generates equity curves, marks trade entry/exit points, displays drawdown periods, and provides rolling performance metrics.
+- **Detailed Trade Analysis:** Extracts and analyzes individual trades, including their direction, returns, and duration.
+- **Drawdown Analysis:** Identifies and quantifies all significant drawdowns.
+- **Configurable Trading Fees:** Accounts for realistic trading costs.
+
+## Installation
+
+This project requires standard Python data science libraries. You can install them using pip:
+
+```bash
+pip install pandas matplotlib numpy seaborn
+````
+
+## Usage
+
+### 1\. Data Preparation
+
+Your historical data should be a Pandas DataFrame with a `DatetimeIndex`. The primary asset's price data should be in the first column.
+
+```python
+import pandas as pd
+import numpy as np
+
+# Example: Generate dummy data
+dates = pd.date_range(start='2020-01-01', periods=252, freq='D')
+prices = np.exp(np.random.randn(252).cumsum() * 0.01 + 0.05) # Simulate price movement
+data = pd.DataFrame(prices, index=dates, columns=['Asset_Price'])
+```
+
+### 2\. Define Your Strategy
+
+Your trading strategy must be a class with a `generate_signals` method that takes the historical data DataFrame as input and returns a Pandas Series representing the trading signals.
+
+  - A signal of `1` indicates a long position.
+  - A signal of `-1` indicates a short position.
+  - A signal of `0` indicates no position.
+
+<!-- end list -->
+
+```python
+class MyCustomStrategy:
+    def generate_signals(self, data: pd.DataFrame) -> pd.Series:
+        # Example: Simple Moving Average Crossover Strategy
+        # This is a placeholder; implement your actual strategy logic here.
+        data['SMA_short'] = data.iloc[:, 0].rolling(window=20).mean()
+        data['SMA_long'] = data.iloc[:, 0].rolling(window=50).mean()
+        signals = pd.Series(0, index=data.index, dtype=int)
+        signals[data['SMA_short'] > data['SMA_long']] = 1
+        signals[data['SMA_short'] < data['SMA_long']] = -1
+        return signals.shift(1).fillna(0) # Shift to avoid look-ahead bias
+```
+
+### 3\. Initialize and Run the Backtester
+
+```python
+from backtester import Backtester # Assuming your class is in backtester.py
+
+# Initialize your strategy
+my_strategy = MyCustomStrategy()
+
+# Initialize the Backtester
+bt = Backtester(data=data, strategy=my_strategy, initial_cash=10000, trading_fee_percent=0.0004)
+
+# Run the backtest
+bt.run()
+```
+
+### 4\. Evaluate and Visualize Results
+
+```python
+# Print performance metrics
+bt.evaluate()
+
+# Plot equity curve and trades
+bt.plot(params="SMA Crossover (20/50)")
+
+# Plot rolling Sharpe and Volatility
+bt.plot_rolling_metrics(window=60)
+
+# Get drawdown table
+drawdowns_df = bt.get_drawdown_table()
+print("\nDrawdown Table:\n", drawdowns_df.head())
+
+# Extract and plot trade returns distribution
+trades_df = bt.extract_trades(plot_pdf=True)
+print("\nIndividual Trades Data:\n", trades_df.head())
+
+# Generate a comprehensive report
+bt.generate_report()
+```
+
+## `Backtester` Class Methods
+
+-----
+
+### `__init__(self, data: pd.DataFrame, strategy, initial_cash=10000, trading_fee_percent=0.0004)`
+
+  - **Description:** Initializes the `Backtester` with historical data, a strategy object, initial capital, and trading fees.
+  - **Parameters:**
+      - `data` (pd.DataFrame): Historical price data with a `DatetimeIndex`. The first column is assumed to be the asset price.
+      - `strategy`: An object of a custom strategy class that must implement a `generate_signals` method.
+      - `initial_cash` (float, optional): Starting capital for the backtest. Defaults to `10000`.
+      - `trading_fee_percent` (float, optional): The one-way trading fee as a percentage of the trade value (e.g., 0.0004 for 0.04%). Defaults to `0.0004`.
+
+-----
+
+### `clean_data(self)`
+
+  - **Description:** Internal method to clean the input data by dropping rows with NaN values and ensuring the index is sorted. This is called automatically during initialization.
+
+-----
+
+### `run(self)`
+
+  - **Description:** Executes the backtest. It generates trading signals using the provided strategy, calculates daily returns for both the asset and the strategy, applies trading fees, and determines trade directions. The results are stored in `self.results`.
+
+-----
+
+### `evaluate(self, silent=False)`
+
+  - **Description:** Calculates and prints various performance metrics of the backtested strategy.
+  - **Parameters:**
+      - `silent` (bool, optional): If `True`, metrics are calculated but not printed to the console. Defaults to `False`.
+
+-----
+
+### `plot(self, params=None)`
+
+  - **Description:** Generates a plot visualizing the strategy's equity curve against a buy-and-hold benchmark. It also marks trade entry/exit points and highlights drawdown periods.
+  - **Parameters:**
+      - `params` (str, optional): An optional string to be included in the plot title, useful for describing strategy parameters.
+
+-----
+
+### `get_performance_metrics(self)`
+
+  - **Description:** Computes and returns a dictionary of key performance metrics for the strategy, including total net return, annualized return, Sharpe ratio, maximum drawdown, and various trade-level statistics.
+
+-----
+
+### `get_drawdown_table(self)`
+
+  - **Description:** Identifies and quantifies all distinct drawdown periods throughout the backtest. Returns a Pandas DataFrame with details on each drawdown's start, trough, end, depth, and duration.
+
+-----
+
+### `extract_trades(self, plot_pdf=True)`
+
+  - **Description:** Extracts details for each individual trade executed by the strategy (entry, exit, direction, returns, fees, length). Optionally, it plots a probability density function (PDF) of trade returns.
+  - **Parameters:**
+      - `plot_pdf` (bool, optional): If `True`, a PDF of trade returns will be plotted. Defaults to `True`.
+  - **Returns:**
+      - pd.DataFrame: A DataFrame containing details of each executed trade.
+
+-----
+
+### `plot_rolling_metrics(self, window=30)`
+
+  - **Description:** Plots rolling (e.g., 30-day or 60-day) Sharpe ratio and annualized volatility of the strategy's returns, providing insights into performance consistency over time.
+  - **Parameters:**
+      - `window` (int, optional): The rolling window size in days. Defaults to `30`.
+
+-----
+
+### `generate_report(self)`
+
+  - **Description:** Compiles and prints a comprehensive performance report, including key metrics, equity curve plot, rolling metrics plot, a table of worst drawdowns, and the distribution of individual trade returns.
+
+-----
+
+## License
+
+This project is open-source and available under the MIT License.
+
+```
+```
