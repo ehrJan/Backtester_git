@@ -6,47 +6,43 @@ from datetime import timedelta
 
 class Backtester:
     def __init__(self, data:pd.DataFrame, strategy, initial_cash=10000,trading_fee_percent=0.0004):
-        self.data = data
         self.strategy = strategy
         self.initial_cash = initial_cash
-        self.results = None
-        self.asset_name = data.columns[0] if isinstance(data, pd.DataFrame) and not data.empty else None
         self.trading_fee_percent = trading_fee_percent
         
+        # --- ADJUSTMENT ---
+        # The first column is assumed to be the price for return calculations
+        self.asset_name = data.columns[0]
+        # Keep all other columns (like the prediction columns)
+        self.data = data.copy()
+        
+        self.results = None
         self.clean_data()
+        
 
     def clean_data(self):
-        if self.asset_name:
-            self.data = self.data[[self.asset_name]].dropna()
-        else:
-            self.data = self.data.dropna()
-
+        self.data.dropna(inplace=True)
         self.data.sort_index(inplace=True)
     
     
 
     def run(self):
+        # This is your full, original run function
         self.data["Signal"] = self.strategy.generate_signals(self.data)
         self.data["Returns"] = np.log(self.data[self.asset_name] / self.data[self.asset_name].shift(1))
-
-        self.data["Strategy"] = self.data["Signal"].shift(1) * self.data["Returns"]#no look ahead bias
-        self.data.dropna(inplace=True)
-        self.results = self.data.copy()
-
+        self.data["Strategy"] = self.data["Signal"].shift(1) * self.data["Returns"]
         self.data["TradeChange"] = self.data["Signal"].diff().fillna(0)
         
         def trade_direction(change):
-            if change == 1: return 1  # open long
-            elif change == -1: return -1  # close long or open short
-            elif change == 2: return 2  # flip short to long
-            elif change == -2: return -2  # flip long to short
+            if change == 1: return 1
+            elif change == -1: return -1
+            elif change == 2: return 2
+            elif change == -2: return -2
             else: return 0
 
         self.data["TradeDirection"] = self.data["TradeChange"].apply(trade_direction)
-
         self.data["Fee"] = self.data["TradeChange"].abs() * self.trading_fee_percent
         self.data["Strategy"] -= self.data["Fee"]
-
         self.data.dropna(inplace=True)
         self.results = self.data.copy()
     
@@ -295,9 +291,17 @@ class Backtester:
         print("\nWorst Drawdowns:")
         print(drawdowns.sort_values("depth_pct").head(5))
         self.extract_trades(plot_pdf=True)
-
     
-    
+class MLStrategy:
+    """A simple strategy to use pre-computed ML predictions as signals."""
+    def __init__(self, prediction_column: str):
+        self.prediction_column = prediction_column
 
+    def generate_signals(self, data: pd.DataFrame) -> pd.Series:
+        """Returns the specified prediction column as the trading signal."""
+        # Ensure the signal is an integer (0 or 1 for long/neutral)
+        signal=data[self.prediction_column].astype(int)
+        #signal = signal.replace(0, -1)
+        return signal
 
 
