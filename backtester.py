@@ -10,7 +10,6 @@ class Backtester:
         self.initial_cash = initial_cash
         self.trading_fee_percent = trading_fee_percent
         
-        # --- ADJUSTMENT ---
         # The first column is assumed to be the price for return calculations
         self.asset_name = data.columns[0]
         # Keep all other columns (like the prediction columns)
@@ -21,13 +20,21 @@ class Backtester:
         
 
     def clean_data(self):
+        """
+        Cleans the data by converting the index to datetime, dropping NaNs, and sorting.
+        """
+        # --- FIX ---
+        # Convert the index to datetime objects to allow for date calculations
+        self.data.index = pd.to_datetime(self.data.index)
+        
         self.data.dropna(inplace=True)
         self.data.sort_index(inplace=True)
     
     
-
     def run(self):
-        # This is your full, original run function
+        """
+        Executes the backtesting logic.
+        """
         self.data["Signal"] = self.strategy.generate_signals(self.data)
         self.data["Returns"] = np.log(self.data[self.asset_name] / self.data[self.asset_name].shift(1))
         self.data["Strategy"] = self.data["Signal"].shift(1) * self.data["Returns"]
@@ -47,12 +54,18 @@ class Backtester:
         self.results = self.data.copy()
     
     def evaluate(self, silent=False):
+        """
+        Prints the main performance metrics.
+        """
         metrics = self.get_performance_metrics()
         if not silent:
             for k, v in metrics.items():
                 print(f"{k}: {v}")
 
     def plot(self, params=None):
+        """
+        Plots the equity curve, trades, and drawdown.
+        """
         fig, ax = plt.subplots(figsize=(14, 6))
 
         # --- Equity curve (strategy & buy-and-hold) ---
@@ -86,6 +99,9 @@ class Backtester:
     #PERFORMANCE METRICS of the strategy
 
     def get_performance_metrics(self):
+        """
+        Calculates a dictionary of performance metrics.
+        """
         # --- Log Returns and Total Returns ---
         gross_log_return = self.results["Strategy"].sum() + self.results["Fee"].sum()
         net_log_return = self.results["Strategy"].sum()
@@ -189,6 +205,7 @@ class Backtester:
                     trough = drawdown.index[i]
                 if drawdown.iloc[i] == 0:
                     end = drawdown.index[i]
+                    # This line will now work correctly
                     duration = (end - start).days
                     recovery_time = (end - trough).days
                     drawdowns.append({
@@ -199,6 +216,12 @@ class Backtester:
                         "depth_pct": round(max_dd * 100, 2),
                         "recovery_days": recovery_time
                     })
+                    # Reset for the next drawdown
+                    in_drawdown = False
+                    start = None
+                    trough = None
+                    max_dd = 0
+
         return pd.DataFrame(drawdowns)
 
     def extract_trades(self, plot_pdf=True):
@@ -263,6 +286,9 @@ class Backtester:
         return trade_df
     
     def plot_rolling_metrics(self, window=30):
+        """
+        Plots rolling Sharpe ratio and volatility.
+        """
         returns = self.results["Strategy"]
         rolling_sharpe = returns.rolling(window).mean() / returns.rolling(window).std() * np.sqrt(252)
         rolling_vol = returns.rolling(window).std() * np.sqrt(252)
@@ -282,6 +308,9 @@ class Backtester:
         plt.show()
 
     def generate_report(self):
+        """
+        Generates a full performance report with plots and tables.
+        """
         print(f"\n📊 Performance Report for {self.asset_name}")
         print("=" * 40)
         self.evaluate()
@@ -289,9 +318,11 @@ class Backtester:
         self.plot_rolling_metrics()
         drawdowns = self.get_drawdown_table()
         print("\nWorst Drawdowns:")
-        print(drawdowns.sort_values("depth_pct").head(5))
+        if not drawdowns.empty:
+            print(drawdowns.sort_values("depth_pct").head(5))
+        else:
+            print("No drawdowns recorded.")
         self.extract_trades(plot_pdf=True)
-    
 class MLStrategy:
     """A simple strategy to use pre-computed ML predictions as signals."""
     def __init__(self, prediction_column: str):
@@ -301,7 +332,8 @@ class MLStrategy:
         """Returns the specified prediction column as the trading signal."""
         # Ensure the signal is an integer (0 or 1 for long/neutral)
         signal=data[self.prediction_column].astype(int)
-        #signal = signal.replace(0, -1)
+        signal = signal.replace(0, -1)
+        
         return signal
 
 
